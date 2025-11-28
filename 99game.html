@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>99乘法挑戰王</title>
+    
+    <!-- 載入核心引擎 (改用更穩定的 cdnjs) -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        /* 防止手機版長按選取文字，讓體驗更像 App */
+        body {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #fff1f2; /* bg-rose-50 */
+            margin: 0;
+            padding: 0;
+        }
+        /* 自定義動畫 */
+        @keyframes bounce {
+            0%, 100% { transform: translateY(-10%); }
+            50% { transform: translateY(0); }
+        }
+        .animate-bounce { animation: bounce 1.5s infinite; }
+        @keyframes scale-in {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 載入畫面樣式 */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #fff1f2;
+            z-index: 50;
+            color: #fb7185;
+            font-family: sans-serif;
+            transition: opacity 0.5s;
+        }
+        
+        /* 搖晃動畫 (答錯時) */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .animate-shake { animation: shake 0.3s ease-in-out; }
+        
+        /* 淡入動畫 */
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-rose-50 font-sans text-slate-600">
+    
+    <!-- 預設載入畫面 (如果 JS 沒跑起來，使用者會看到這個) -->
+    <div id="loading-screen">
+        <div style="font-size: 40px; margin-bottom: 20px;">🐻</div>
+        <h2 style="font-size: 24px; font-weight: bold;">正在準備魔法...</h2>
+        <p style="margin-top: 10px; color: #94a3b8;">(如果卡很久，請檢查網路連線喔！)</p>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // 錯誤捕捉
+        window.onerror = function(message, source, lineno, colno, error) {
+            const loadingScreen = document.getElementById('loading-screen');
+            if (loadingScreen) {
+                loadingScreen.innerHTML = `
+                    <div style="padding: 20px; text-align: center;">
+                        <h2 style="color: #ef4444; font-size: 20px;">哎呀！發生錯誤了</h2>
+                        <p style="color: #64748b; margin-top: 10px;">${message}</p>
+                    </div>
+                `;
+            }
+        };
+
+        const { useState, useEffect } = React;
+
+        // --- 簡易圖示元件 ---
+        const IconBase = ({ d, className = "", size = 24, ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+                {Array.isArray(d) ? d.map((path, i) => <path key={i} d={path} />) : <path d={d} />}
+            </svg>
+        );
+
+        const Star = (p) => <IconBase {...p} d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />;
+        const Heart = (p) => <IconBase {...p} d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />;
+        const Trophy = (p) => <IconBase {...p} d={["M6 9H4.5a2.5 2.5 0 0 1 0-5H6", "M18 9h1.5a2.5 2.5 0 0 0 0-5H18", "M4 22h16", "M8 22v-4.172a2 2 0 0 1 .586-1.414L12 13l3.414 3.414A2 2 0 0 1 16 17.828V22", "M12 13V2"]} />;
+        const BookOpen = (p) => <IconBase {...p} d={["M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"]} />;
+        const Play = (p) => <IconBase {...p} d="M5 3l14 9-14 9V3z" />;
+        const ArrowLeft = (p) => <IconBase {...p} d={["M19 12H5", "M12 19l-7-7 7-7"]} />;
+        const RefreshCw = (p) => <IconBase {...p} d={["M23 4v6h-6", "M1 20v-6h6", "M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"]} />;
+        const CheckCircle = (p) => <IconBase {...p} d={["M22 11.08V12a10 10 0 1 1-5.93-9.14", "M22 4L12 14.01l-3-3"]} />;
+        const XCircle = (p) => <IconBase {...p} d={["M10 11.08V12a10 10 0 1 1-5.93-9.14", "M15 9l-6 6", "M9 9l6 6"]} />;
+        const Frown = (p) => <IconBase {...p} d={["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "M9 9h.01", "M15 9h.01", "M9 14s1.5 1.5 3 1.5 3-1.5 3-1.5"]} />;
+        const Award = (p) => <IconBase {...p} d={["M12 15a7 7 0 1 0 0-14 7 7 0 0 0 0 14z", "M8.21 13.89L7 23l5-3 5 3-1.21-9.12"]} />;
+        const Lightbulb = (p) => <IconBase {...p} d={["M15 14c.2-1 .7-1.7 1.5-2.5 1-1 1.5-2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5", "M9 18h6", "M10 22h4"]} />;
+        const Minus = (p) => <IconBase {...p} d="M5 12h14" />;
+        const Plus = (p) => <IconBase {...p} d={["M12 5v14", "M5 12h14"]} />;
+        // 更像蘋果的圖示
+        const Apple = (p) => <IconBase {...p} d={["M12 21c-3.5 0-7-4-7-9 0-3.5 2.5-6 5.5-6 1.5 0 3.5 1 3.5 1s2-1 3.5-1c3 0 5.5 2.5 5.5 6 0 5-3.5 9-7 9z", "M12 6c0-2.5 1-4 3-5"]} />;
+
+        // --- 元件：3D 馬卡龍色系按鈕 ---
+        const CuteButton = ({ onClick, color, children, className = "", disabled = false }) => {
+            const colorClasses = {
+                blue: "bg-sky-200 hover:bg-sky-300 shadow-[0_6px_0_#7dd3fc] border-sky-300 text-sky-700",
+                pink: "bg-rose-200 hover:bg-rose-300 shadow-[0_6px_0_#fda4af] border-rose-300 text-rose-700",
+                green: "bg-emerald-200 hover:bg-emerald-300 shadow-[0_6px_0_#6ee7b7] border-emerald-300 text-emerald-700",
+                yellow: "bg-amber-200 hover:bg-amber-300 shadow-[0_6px_0_#fcd34d] border-amber-300 text-amber-700",
+                purple: "bg-violet-200 hover:bg-violet-300 shadow-[0_6px_0_#c4b5fd] border-violet-300 text-violet-700",
+                gray: "bg-slate-200 hover:bg-slate-300 shadow-[0_6px_0_#cbd5e1] border-slate-300 text-slate-500",
+            };
+
+            const selectedColor = disabled ? colorClasses.gray : (colorClasses[color] || colorClasses.blue);
+
+            return (
+                <button
+                onClick={!disabled ? onClick : undefined}
+                disabled={disabled}
+                className={`
+                    ${selectedColor} 
+                    font-bold py-3 px-6 rounded-2xl 
+                    transform transition-all duration-150 
+                    active:translate-y-1 active:shadow-none 
+                    flex items-center justify-center gap-2
+                    text-lg md:text-xl border-2 border-opacity-50
+                    ${disabled ? 'opacity-70 cursor-not-allowed' : ''}
+                    ${className}
+                `}
+                >
+                {children}
+                </button>
+            );
+        };
+
+        // --- 資料與輔助函式 ---
+        const encouragePhrases = [
+            "沒關係，再試一次看看！",
+            "不要灰心，你可以的！",
+            "想一下，快答對囉！",
+            "加油，再算一次！",
+            "失敗是成功之母，再來！"
+        ];
+
+        const successPhrases = [
+            "太棒了！你真聰明！",
+            "答對了！好厲害！",
+            "超級優秀！",
+            "一百分！繼續保持！",
+            "哇！你是乘法小天才！"
+        ];
+
+        const generateQuestion = (min = 1, max = 9) => {
+            const a = Math.floor(Math.random() * (max - min + 1)) + min;
+            const b = Math.floor(Math.random() * 9) + 1;
+            return { a, b, answer: a * b };
+        };
+
+        const generateChallengeQuestion = (min, max, allowMissingFactor = false) => {
+            const a = Math.floor(Math.random() * (max - min + 1)) + min;
+            const b = Math.floor(Math.random() * 9) + 1;
+            const product = a * b;
+
+            let missing = 'product'; 
+            let answer = product;
+
+            if (allowMissingFactor) {
+                const r = Math.random();
+                if (r < 0.35) {
+                missing = 'a'; 
+                answer = a;
+                } else if (r < 0.7) {
+                missing = 'b'; 
+                answer = b;
+                }
+            }
+            return { a, b, product, missing, answer };
+        };
+
+        const generateOptions = (correctAnswer) => {
+            const options = new Set([correctAnswer]);
+            while (options.size < 4) {
+                let offset = Math.floor(Math.random() * 10) - 5; 
+                if (offset === 0) offset = 1;
+                const val = correctAnswer + offset;
+                if (val > 0) options.add(val);
+            }
+            return Array.from(options).sort(() => Math.random() - 0.5);
+        };
+
+        // --- 主程式 ---
+        function App() {
+            const [mode, setMode] = useState('menu'); 
+            
+            // 移除載入畫面 (當 App 元件成功載入時)
+            useEffect(() => {
+                const loader = document.getElementById('loading-screen');
+                if (loader) {
+                    loader.style.opacity = '0';
+                    setTimeout(() => loader.remove(), 500);
+                }
+            }, []);
+
+            return (
+                <div className="min-h-screen bg-rose-50 font-sans selection:bg-rose-200 text-slate-600">
+                <div className="max-w-2xl mx-auto min-h-screen flex flex-col relative overflow-hidden">
+                    
+                    {/* 背景裝飾 */}
+                    <div className="absolute top-[-5%] left-[-5%] w-64 h-64 bg-yellow-100 rounded-full opacity-60 pointer-events-none"></div>
+                    <div className="absolute bottom-[-5%] right-[-5%] w-80 h-80 bg-sky-100 rounded-full opacity-60 pointer-events-none"></div>
+                    <div className="absolute top-[40%] right-[-10%] w-32 h-32 bg-purple-100 rounded-full opacity-40 pointer-events-none"></div>
+                    
+                    {/* 主要內容區 */}
+                    <div className="flex-1 flex flex-col p-6 z-10">
+                    
+                    {mode === 'menu' && <MainMenu setMode={setMode} />}
+                    {mode === 'learn' && <LearnMode goBack={() => setMode('menu')} />}
+                    {mode === 'recite' && <ReciteMode goBack={() => setMode('menu')} />}
+                    {mode === 'practice' && <PracticeMode goBack={() => setMode('menu')} />}
+                    {mode === 'challenge' && <ChallengeMode goBack={() => setMode('menu')} />}
+                    
+                    </div>
+                </div>
+                </div>
+            );
+        }
+
+        // --- 選單模式 ---
+        function MainMenu({ setMode }) {
+            return (
+                <div className="flex flex-col items-center justify-center flex-1 space-y-12 animate-fade-in py-8">
+                <div className="text-center relative pt-4 mb-4">
+                    <div className="relative inline-block group cursor-default">
+                        <h1 className="text-6xl md:text-7xl font-black tracking-tight z-10 flex items-center gap-3">
+                        <span className="text-sky-400 transform -rotate-6 inline-block filter drop-shadow-sm">99</span>
+                        <span className="text-rose-400 filter drop-shadow-sm">乘法挑戰王</span>
+                        </h1>
+                        <Star className="absolute -top-6 -right-8 text-yellow-300 fill-yellow-300 w-12 h-12 z-20 animate-bounce" />
+                        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-32 h-3 bg-rose-200/50 rounded-full blur-[2px]"></div>
+                    </div>
+                </div>
+
+                <div className="grid gap-4 w-full max-w-sm mt-4">
+                    <CuteButton color="yellow" onClick={() => setMode('learn')} className="w-full text-xl py-5">
+                    <Lightbulb size={28} /> 魔法教學 <span className="text-sm font-normal ml-1 text-amber-600/70">(先來學觀念)</span>
+                    </CuteButton>
+
+                    <CuteButton color="blue" onClick={() => setMode('recite')} className="w-full text-xl py-5">
+                    <BookOpen size={28} /> 背誦卡片
+                    </CuteButton>
+                    
+                    <CuteButton color="green" onClick={() => setMode('practice')} className="w-full text-xl py-5">
+                    <Play size={28} /> 輕鬆練習
+                    </CuteButton>
+                    
+                    <CuteButton color="pink" onClick={() => setMode('challenge')} className="w-full text-xl py-5">
+                    <Trophy size={28} /> 勇者闖關
+                    </CuteButton>
+                </div>
+                </div>
+            );
+        }
+
+        // --- 教學模式 ---
+        function LearnMode({ goBack }) {
+            const [multiplicand, setMultiplicand] = useState(3);
+            const [multiplier, setMultiplier] = useState(2);
+
+            const handleMultiplicandChange = (delta) => {
+                const newVal = multiplicand + delta;
+                if (newVal >= 1 && newVal <= 9) setMultiplicand(newVal);
+            };
+
+            const handleMultiplierChange = (delta) => {
+                const newVal = multiplier + delta;
+                if (newVal >= 1 && newVal <= 9) setMultiplier(newVal);
+            };
+
+            return (
+                <div className="flex flex-col flex-1 h-full animate-fade-in">
+                <div className="flex items-center justify-between mb-4">
+                    <CuteButton color="gray" onClick={goBack} className="!py-2 !px-4 !text-sm">
+                    <ArrowLeft size={20} /> 返回
+                    </CuteButton>
+                    <h2 className="text-2xl font-bold text-amber-500 bg-amber-50 px-4 py-1 rounded-full border-2 border-amber-100">
+                        魔法教學
+                    </h2>
+                    <div className="w-20"></div> 
+                </div>
+
+                <div className="bg-white rounded-3xl p-6 shadow-lg border-4 border-amber-100 mb-6 flex flex-col items-center">
+                    <div className="flex items-end gap-2 md:gap-4 mb-4">
+                        <div className="flex flex-col items-center group">
+                            <div className="text-5xl md:text-6xl font-black text-rose-400 bg-rose-50 w-16 h-20 md:w-20 md:h-24 rounded-2xl flex items-center justify-center border-2 border-rose-100 mb-2 transition-all group-hover:scale-110">
+                                {multiplicand}
+                            </div>
+                            <div className="text-xs text-rose-600 bg-rose-100 px-2 py-1 rounded-full font-bold">被乘數</div>
+                            <div className="text-[10px] text-slate-400 mt-1">每盤有幾顆</div>
+                        </div>
+
+                        <div className="text-3xl text-slate-300 pb-12 font-black">×</div>
+
+                        <div className="flex flex-col items-center group">
+                            <div className="text-5xl md:text-6xl font-black text-sky-400 bg-sky-50 w-16 h-20 md:w-20 md:h-24 rounded-2xl flex items-center justify-center border-2 border-sky-100 mb-2 transition-all group-hover:scale-110">
+                                {multiplier}
+                            </div>
+                            <div className="text-xs text-sky-600 bg-sky-100 px-2 py-1 rounded-full font-bold">乘數</div>
+                            <div className="text-[10px] text-slate-400 mt-1">共有幾盤</div>
+                        </div>
+
+                        <div className="text-3xl text-slate-300 pb-12 font-black">=</div>
+
+                        <div className="flex flex-col items-center">
+                            <div className="text-5xl md:text-6xl font-black text-emerald-500 bg-emerald-50 w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center border-4 border-emerald-100 mb-2 shadow-inner">
+                                {multiplicand * multiplier}
+                            </div>
+                            <div className="text-xs text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full font-bold">積 (答案)</div>
+                            <div className="text-[10px] text-slate-400 mt-1">全部多少顆</div>
+                        </div>
+                    </div>
+
+                    <div className="text-center bg-slate-50 px-6 py-3 rounded-xl w-full text-slate-600">
+                        <p className="text-lg">
+                            每盤有 <strong className="text-rose-500 text-xl">{multiplicand}</strong> 顆蘋果，
+                            共有 <strong className="text-sky-500 text-xl">{multiplier}</strong> 盤
+                        </p>
+                        <p className="text-sm text-slate-400 mt-1">全部加起來就是 {multiplicand * multiplier} 顆！</p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-rose-50 rounded-2xl p-3 flex flex-col items-center border-2 border-rose-100">
+                        <span className="text-sm font-bold text-rose-600 mb-2">調整每盤幾顆</span>
+                        <div className="flex items-center gap-3">
+                            <button onClick={() => handleMultiplicandChange(-1)} className="w-8 h-8 rounded-full bg-white text-rose-500 shadow flex items-center justify-center hover:bg-rose-100 font-bold disabled:opacity-50" disabled={multiplicand <= 1}><Minus size={16}/></button>
+                            <span className="text-2xl font-black text-rose-500 w-6 text-center">{multiplicand}</span>
+                            <button onClick={() => handleMultiplicandChange(1)} className="w-8 h-8 rounded-full bg-white text-rose-500 shadow flex items-center justify-center hover:bg-rose-100 font-bold disabled:opacity-50" disabled={multiplicand >= 9}><Plus size={16}/></button>
+                        </div>
+                    </div>
+                    <div className="bg-sky-50 rounded-2xl p-3 flex flex-col items-center border-2 border-sky-100">
+                        <span className="text-sm font-bold text-sky-600 mb-2">調整有幾盤</span>
+                        <div className="flex items-center gap-3">
+                            <button onClick={() => handleMultiplierChange(-1)} className="w-8 h-8 rounded-full bg-white text-sky-500 shadow flex items-center justify-center hover:bg-sky-100 font-bold disabled:opacity-50" disabled={multiplier <= 1}><Minus size={16}/></button>
+                            <span className="text-2xl font-black text-sky-500 w-6 text-center">{multiplier}</span>
+                            <button onClick={() => handleMultiplierChange(1)} className="w-8 h-8 rounded-full bg-white text-sky-500 shadow flex items-center justify-center hover:bg-sky-100 font-bold disabled:opacity-50" disabled={multiplier >= 9}><Plus size={16}/></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex-1 bg-white/50 border-2 border-dashed border-slate-200 rounded-3xl p-4 overflow-y-auto">
+                    <div className="flex flex-wrap content-start justify-center gap-4 min-h-full">
+                        {Array.from({ length: multiplier }).map((_, groupIndex) => (
+                            <div key={groupIndex} className="bg-white border-2 border-sky-200 rounded-2xl p-3 shadow-sm relative w-32 min-h-[100px] flex flex-col items-center">
+                                <div className="absolute -top-3 bg-sky-400 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">
+                                    第 {groupIndex + 1} 盤
+                                </div>
+                                <div className="flex flex-wrap justify-center gap-1 mt-2">
+                                    {Array.from({ length: multiplicand }).map((_, itemIndex) => (
+                                        <Apple 
+                                            key={itemIndex} 
+                                            size={20} 
+                                            className="text-rose-400 fill-rose-400 animate-scale-in" 
+                                            style={{animationDelay: `${itemIndex * 0.1}s`}}
+                                        />
+                                    ))}
+                                </div>
+                                <div className="mt-auto pt-2 text-xs text-slate-400 font-bold">
+                                    {multiplicand} 顆
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                </div>
+            );
+        }
+
+        // --- 背誦模式 ---
+        function ReciteMode({ goBack }) {
+            const [number, setNumber] = useState(2);
+
+            return (
+                <div className="flex flex-col flex-1 animate-fade-in">
+                <div className="flex items-center justify-between mb-6">
+                    <CuteButton color="gray" onClick={goBack} className="!py-2 !px-4 !text-sm">
+                    <ArrowLeft size={20} /> 返回
+                    </CuteButton>
+                    <h2 className="text-3xl font-bold text-sky-500">背誦卡片</h2>
+                    <div className="w-20"></div> 
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-4 mb-4 hide-scrollbar justify-center">
+                    {[2,3,4,5,6,7,8,9].map(n => (
+                    <button
+                        key={n}
+                        onClick={() => setNumber(n)}
+                        className={`
+                        w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold transition-all
+                        ${number === n 
+                            ? 'bg-sky-400 text-white shadow-lg scale-110' 
+                            : 'bg-white text-sky-400 hover:bg-sky-100'}
+                        `}
+                    >
+                        {n}
+                    </button>
+                    ))}
+                </div>
+
+                <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-xl border-4 border-sky-100 flex-1 flex flex-col justify-center items-center relative overflow-hidden">
+                    <h3 className="text-4xl font-black text-sky-500 mb-6 bg-sky-50 px-8 py-2 rounded-full">
+                        {number} 的乘法
+                    </h3>
+
+                    <div className="grid grid-cols-1 gap-3 w-full max-w-md text-center">
+                        {[1,2,3,4,5,6,7,8,9].map(m => (
+                        <div key={m} className="bg-slate-50 hover:bg-yellow-50 transition-colors p-3 rounded-xl text-2xl font-bold text-slate-600 flex justify-center gap-2 shadow-sm border border-slate-100">
+                            <span className="text-sky-500">{number}</span>
+                            <span className="text-slate-300">x</span>
+                            <span className="text-rose-400">{m}</span>
+                            <span className="text-slate-300">=</span>
+                            <span className="text-emerald-500">{number * m}</span>
+                        </div>
+                        ))}
+                    </div>
+                </div>
+                </div>
+            );
+        }
+
+        // --- 練習模式 ---
+        function PracticeMode({ goBack }) {
+
+            const [question, setQuestion] = useState(generateQuestion(2, 9));
+            const [options, setOptions] = useState([]);
+            const [feedback, setFeedback] = useState(null); 
+            const [message, setMessage] = useState("選選看，答案是多少？");
+
+            useEffect(() => {
+                setOptions(generateOptions(question.answer));
+            }, [question]);
+
+            const handleAnswer = (val) => {
+                if (feedback === 'correct') return;
+
+                if (val === question.answer) {
+                setFeedback('correct');
+                const randomMsg = successPhrases[Math.floor(Math.random() * successPhrases.length)];
+                setMessage(randomMsg);
+                } else {
+                setFeedback('wrong');
+                const randomMsg = encouragePhrases[Math.floor(Math.random() * encouragePhrases.length)];
+                setMessage(randomMsg);
+                }
+            };
+
+            const nextQuestion = () => {
+                setQuestion(generateQuestion(2, 9));
+                setFeedback(null);
+                setMessage("選選看，答案是多少？");
+            };
+
+            return (
+                <div className="flex flex-col flex-1 max-w-lg mx-auto w-full animate-fade-in">
+                <div className="flex items-center justify-between mb-8">
+                    <CuteButton color="gray" onClick={goBack} className="!py-2 !px-4 !text-sm">
+                    <ArrowLeft size={20} /> 結束練習
+                    </CuteButton>
+                    <div className="bg-emerald-100 text-emerald-600 px-4 py-2 rounded-full font-bold">
+                    輕鬆練習模式
+                    </div>
+                </div>
+
+                <div className="flex-1 flex flex-col justify-center items-center">
+                    <div className="bg-white w-full rounded-3xl p-8 shadow-2xl border-b-8 border-emerald-100 text-center relative mb-8">
+                    
+                    <div className="text-7xl font-black text-slate-700 flex justify-center gap-4 items-center mb-4">
+                        <span className="text-sky-400">{question.a}</span>
+                        <span className="text-slate-200 text-5xl">x</span>
+                        <span className="text-rose-400">{question.b}</span>
+                    </div>
+                    
+                    <div className="text-4xl font-bold text-slate-300">
+                        = <span className="text-slate-200">?</span>
+                    </div>
+
+                    {feedback === 'correct' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/90 rounded-3xl backdrop-blur-sm animate-scale-in">
+                        <CheckCircle size={80} className="text-emerald-400" />
+                        </div>
+                    )}
+                    {feedback === 'wrong' && (
+                        <div className="absolute top-4 right-4 animate-shake">
+                        <XCircle size={40} className="text-rose-300 opacity-60" />
+                        </div>
+                    )}
+                    </div>
+
+                    <div className={`text-xl font-bold mb-8 px-6 py-3 rounded-2xl transition-all ${
+                    feedback === 'correct' ? 'bg-emerald-100 text-emerald-600' : 
+                    feedback === 'wrong' ? 'bg-amber-100 text-amber-600' : 'bg-white/60 text-slate-500'
+                    }`}>
+                    {message}
+                    </div>
+
+                    {feedback !== 'correct' ? (
+                    <div className="grid grid-cols-2 gap-4 w-full">
+                        {options.map((opt, idx) => (
+                        <CuteButton 
+                            key={idx} 
+                            color="yellow" 
+                            onClick={() => handleAnswer(opt)}
+                            className="text-3xl font-black !py-6"
+                        >
+                            {opt}
+                        </CuteButton>
+                        ))}
+                    </div>
+                    ) : (
+                    <CuteButton color="green" onClick={nextQuestion} className="w-full text-2xl animate-bounce">
+                        下一題 <RefreshCw size={24} />
+                    </CuteButton>
+                    )}
+                </div>
+                </div>
+            );
+        }
+
+        // --- 闖關模式 ---
+        function ChallengeMode({ goBack }) {
+            const [gameState, setGameState] = useState('intro');
+            const [lives, setLives] = useState(3);
+            const [score, setScore] = useState(0);
+            const [level, setLevel] = useState(1);
+            const [question, setQuestion] = useState(null);
+            const [options, setOptions] = useState([]);
+            const [message, setMessage] = useState("");
+            const [isWrongAnim, setIsWrongAnim] = useState(false);
+
+            const getLevelConfig = (lvl) => {
+                if (lvl === 1) return { min: 2, max: 4, label: "關卡 1: 初級挑戰", allowMissingFactor: false };
+                if (lvl === 2) return { min: 5, max: 7, label: "關卡 2: 進階挑戰", allowMissingFactor: true };
+                return { min: 2, max: 9, label: "關卡 3: 最終挑戰", allowMissingFactor: true };
+            };
+
+            const startGame = () => {
+                setLives(3);
+                setScore(0);
+                setLevel(1);
+                setMessage("");
+                setGameState('playing');
+                nextLevelQuestion(1);
+            };
+
+            const nextLevelQuestion = (currentLevel) => {
+                const config = getLevelConfig(currentLevel);
+                const q = generateChallengeQuestion(config.min, config.max, config.allowMissingFactor);
+                setQuestion(q);
+                setOptions(generateOptions(q.answer));
+            };
+
+            const handleAnswer = (val) => {
+                if (val === question.answer) {
+                const newScore = score + 1;
+                setScore(newScore);
+                
+                if (newScore === 5) {
+                    setLevel(2);
+                    setMessage("升級了！開始出現填空題！");
+                    setTimeout(() => setMessage(""), 2000);
+                } else if (newScore === 10) {
+                    setLevel(3);
+                    setMessage("太強了！最後衝刺！");
+                    setTimeout(() => setMessage(""), 2000);
+                } else if (newScore >= 15) {
+                    setGameState('won');
+                    return;
+                }
+
+                nextLevelQuestion(newScore >= 10 ? 3 : (newScore >= 5 ? 2 : 1));
+
+                } else {
+                const newLives = lives - 1;
+                setLives(newLives);
+                setMessage(encouragePhrases[Math.floor(Math.random() * encouragePhrases.length)]);
+                setIsWrongAnim(true);
+                setTimeout(() => setIsWrongAnim(false), 500);
+
+                if (newLives <= 0) {
+                    setGameState('lost');
+                }
+                }
+            };
+
+            if (gameState === 'won') {
+                return (
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-6 animate-scale-in">
+                    <Award size={100} className="text-amber-400 drop-shadow-lg" />
+                    <h2 className="text-4xl font-black text-rose-500">恭喜通關！</h2>
+                    <p className="text-xl text-slate-500">你是最強的乘法挑戰王！</p>
+                    <div className="flex gap-4 mt-8">
+                    <CuteButton color="gray" onClick={goBack}>回首頁</CuteButton>
+                    <CuteButton color="green" onClick={startGame}>再玩一次</CuteButton>
+                    </div>
+                </div>
+                );
+            }
+
+            if (gameState === 'lost') {
+                return (
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-6 animate-scale-in">
+                    <Frown size={100} className="text-slate-300" />
+                    <h2 className="text-3xl font-black text-slate-600">挑戰失敗...</h2>
+                    <p className="text-xl text-slate-500">沒關係，休息一下再試試！</p>
+                    <div className="flex gap-4 mt-8">
+                    <CuteButton color="gray" onClick={goBack}>回首頁</CuteButton>
+                    <CuteButton color="blue" onClick={startGame}>重新挑戰</CuteButton>
+                    </div>
+                </div>
+                );
+            }
+
+            if (gameState === 'intro') {
+                return (
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-6 p-4 animate-fade-in">
+                    <div className="bg-white p-8 rounded-3xl shadow-xl border-b-8 border-rose-100 max-w-sm w-full">
+                    <h2 className="text-3xl font-bold text-rose-500 mb-6">挑戰規則</h2>
+                    <ul className="text-left space-y-4 text-lg text-slate-600 mb-8">
+                        <li className="flex items-center gap-3"><Heart className="text-rose-400 fill-current" size={24}/> 有 3 顆愛心生命值</li>
+                        <li className="flex items-center gap-3"><Trophy className="text-amber-400 fill-current" size={24}/> 答對 15 題就獲勝</li>
+                        <li className="flex items-center gap-3"><Star className="text-violet-400 fill-current" size={24}/> 越後面題目越靈活喔！</li>
+                    </ul>
+                    <CuteButton color="pink" onClick={startGame} className="w-full text-2xl">
+                        開始挑戰！
+                    </CuteButton>
+                    </div>
+                    <button onClick={goBack} className="text-slate-400 underline decoration-dashed hover:text-slate-600">不玩了，回首頁</button>
+                </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col flex-1 max-w-lg mx-auto w-full animate-fade-in">
+                <div className="bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between mb-6">
+                    <div className="flex gap-1">
+                    {[...Array(3)].map((_, i) => (
+                        <Heart 
+                        key={i} 
+                        className={`${i < lives ? 'text-rose-400 fill-current' : 'text-slate-200'} transition-all`} 
+                        size={28} 
+                        />
+                    ))}
+                    </div>
+                    <div className="font-bold text-slate-600">
+                    得分: <span className="text-2xl text-sky-500">{score}</span> / 15
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center mb-4 px-2">
+                    <span className="text-sm font-bold bg-violet-100 text-violet-600 px-3 py-1 rounded-lg">
+                    {getLevelConfig(level).label}
+                    </span>
+                    <button onClick={goBack} className="text-slate-400 text-sm hover:text-slate-600">退出</button>
+                </div>
+
+                <div className={`
+                    bg-white border-4 border-rose-100 rounded-3xl p-8 mb-6 text-center shadow-lg relative
+                    transition-transform duration-100
+                    ${isWrongAnim ? 'translate-x-2 border-rose-300 bg-rose-50' : ''}
+                `}>
+                    <div className="text-6xl font-black text-slate-700 flex justify-center gap-3 items-center">
+                        {question.missing === 'a' ? (
+                            <span className="text-sky-400 border-b-4 border-sky-200 px-2 animate-pulse">?</span>
+                        ) : (
+                            <span className="text-sky-400">{question.a}</span>
+                        )}
+                        
+                        <span className="text-slate-200">x</span>
+                        
+                        {question.missing === 'b' ? (
+                            <span className="text-rose-400 border-b-4 border-rose-200 px-2 animate-pulse">?</span>
+                        ) : (
+                            <span className="text-rose-400">{question.b}</span>
+                        )}
+                        
+                        <span className="text-slate-200">=</span>
+                        
+                        {question.missing === 'product' ? (
+                            <span className="text-amber-400 border-b-4 border-amber-200 px-2 animate-pulse">?</span>
+                        ) : (
+                            <span className="text-amber-400">{question.product}</span>
+                        )}
+                    </div>
+                </div>
+
+                <div className="h-8 text-center mb-4 font-bold text-lg text-amber-500 animate-pulse">
+                    {message}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    {options.map((opt, idx) => (
+                    <CuteButton 
+                        key={idx} 
+                        color="blue" 
+                        onClick={() => handleAnswer(opt)}
+                        className="text-3xl font-black !py-6"
+                    >
+                        {opt}
+                    </CuteButton>
+                    ))}
+                </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
