@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>99乘法挑戰王</title>
     
+    <!-- 載入核心引擎 -->
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -70,6 +71,7 @@
 </head>
 <body class="bg-rose-50 font-sans text-slate-600">
     
+    <!-- 預設載入畫面 -->
     <div id="loading-screen">
         <div style="font-size: 40px; margin-bottom: 20px;">🐻</div>
         <h2 style="font-size: 24px; font-weight: bold;">正在準備魔法...</h2>
@@ -115,8 +117,6 @@
         const Lightbulb = (p) => <IconBase {...p} d={["M15 14c.2-1 .7-1.7 1.5-2.5 1-1 1.5-2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5", "M9 18h6", "M10 22h4"]} />;
         const Minus = (p) => <IconBase {...p} d="M5 12h14" />;
         const Plus = (p) => <IconBase {...p} d={["M12 5v14", "M5 12h14"]} />;
-        
-        // 修正後的蘋果圖示 (更像蘋果)
         const Apple = (p) => <IconBase {...p} d={["M12 21c-3.5 0-7-4-7-9 0-3.5 2.5-6 5.5-6 1.5 0 3.5 1 3.5 1s2-1 3.5-1c3 0 5.5 2.5 5.5 6 0 5-3.5 9-7 9z", "M12 6c0-2.5 1-4 3-5"]} />;
 
         // --- 元件：3D 馬卡龍色系按鈕 ---
@@ -128,6 +128,7 @@
                 yellow: "bg-amber-200 hover:bg-amber-300 shadow-[0_6px_0_#fcd34d] border-amber-300 text-amber-700",
                 purple: "bg-violet-200 hover:bg-violet-300 shadow-[0_6px_0_#c4b5fd] border-violet-300 text-violet-700",
                 gray: "bg-slate-200 hover:bg-slate-300 shadow-[0_6px_0_#cbd5e1] border-slate-300 text-slate-500",
+                orange: "bg-orange-200 hover:bg-orange-300 shadow-[0_6px_0_#fdba74] border-orange-300 text-orange-700",
             };
 
             const selectedColor = disabled ? colorClasses.gray : (colorClasses[color] || colorClasses.blue);
@@ -169,8 +170,9 @@
             "哇！你是乘法小天才！"
         ];
 
-        const generateQuestion = (min = 1, max = 9) => {
-            const a = Math.floor(Math.random() * (max - min + 1)) + min;
+        // 修改後的產生題目函式：支援指定 multiplicand
+        const generateQuestion = (min = 1, max = 9, fixedMultiplicand = null) => {
+            const a = fixedMultiplicand !== null ? fixedMultiplicand : Math.floor(Math.random() * (max - min + 1)) + min;
             const b = Math.floor(Math.random() * 9) + 1;
             return { a, b, answer: a * b };
         };
@@ -250,7 +252,6 @@
                 <div className="flex flex-col items-center justify-center flex-1 space-y-12 animate-fade-in py-8">
                 <div className="text-center relative pt-4 mb-4">
                     <div className="relative inline-block group cursor-default">
-                        {/* 修正：字體大小響應式 + 不換行 (whitespace-nowrap) */}
                         <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tight z-10 flex items-center justify-center gap-2 md:gap-3 whitespace-nowrap">
                         <span className="text-sky-400 transform -rotate-6 inline-block filter drop-shadow-sm">99</span>
                         <span className="text-rose-400 filter drop-shadow-sm">乘法挑戰王</span>
@@ -322,7 +323,6 @@
 
                         <div className="flex flex-col items-center group">
                             <div className="text-5xl md:text-6xl font-black text-sky-400 bg-sky-50 w-16 h-20 md:w-20 md:h-24 rounded-2xl flex items-center justify-center border-2 border-sky-100 mb-2 transition-all group-hover:scale-110">
-
                                 {multiplier}
                             </div>
                             <div className="text-xs text-sky-600 bg-sky-100 px-2 py-1 rounded-full font-bold">乘數</div>
@@ -448,45 +448,106 @@
             );
         }
 
-        // --- 練習模式 ---
+        // --- 練習模式 (已更新：新增選單 2~9) ---
         function PracticeMode({ goBack }) {
-            const [question, setQuestion] = useState(generateQuestion(2, 9));
+            // practiceStage: 'setup' (選擇數字) 或 'playing' (答題中)
+            const [practiceStage, setPracticeState] = useState('setup');
+            const [targetNumber, setTargetNumber] = useState(null); // null = 綜合(2-9), 數字 = 指定
+            
+            const [question, setQuestion] = useState(null);
             const [options, setOptions] = useState([]);
             const [feedback, setFeedback] = useState(null); 
             const [message, setMessage] = useState("選選看，答案是多少？");
 
-            useEffect(() => {
-                setOptions(generateOptions(question.answer));
-            }, [question]);
+            // 開始練習的初始化
+            const startPractice = (target) => {
+                setTargetNumber(target);
+                setPracticeState('playing');
+                generateNewQuestion(target);
+            };
+
+            const generateNewQuestion = (target) => {
+                const q = generateQuestion(2, 9, target); // target 如果是 null，就會隨機 2-9
+                setQuestion(q);
+                setOptions(generateOptions(q.answer));
+                setFeedback(null);
+                setMessage("選選看，答案是多少？");
+            };
 
             const handleAnswer = (val) => {
                 if (feedback === 'correct') return;
 
                 if (val === question.answer) {
-                setFeedback('correct');
-                const randomMsg = successPhrases[Math.floor(Math.random() * successPhrases.length)];
-                setMessage(randomMsg);
+                    setFeedback('correct');
+                    const randomMsg = successPhrases[Math.floor(Math.random() * successPhrases.length)];
+                    setMessage(randomMsg);
                 } else {
-                setFeedback('wrong');
-                const randomMsg = encouragePhrases[Math.floor(Math.random() * encouragePhrases.length)];
-                setMessage(randomMsg);
+                    setFeedback('wrong');
+                    const randomMsg = encouragePhrases[Math.floor(Math.random() * encouragePhrases.length)];
+                    setMessage(randomMsg);
                 }
             };
 
             const nextQuestion = () => {
-                setQuestion(generateQuestion(2, 9));
-                setFeedback(null);
-                setMessage("選選看，答案是多少？");
+                generateNewQuestion(targetNumber);
             };
 
+            // 如果還在設定階段，顯示選擇選單
+            if (practiceStage === 'setup') {
+                return (
+                    <div className="flex flex-col flex-1 max-w-lg mx-auto w-full animate-fade-in">
+                        <div className="flex items-center justify-between mb-8">
+                            <CuteButton color="gray" onClick={goBack} className="!py-2 !px-4 !text-sm">
+                                <ArrowLeft size={20} /> 返回主單
+                            </CuteButton>
+                            <h2 className="text-2xl font-bold text-emerald-600 bg-emerald-100 px-4 py-1 rounded-full">
+                                選擇練習範圍
+                            </h2>
+                        </div>
+                        
+                        <div className="bg-white rounded-3xl p-6 shadow-xl border-4 border-emerald-100 flex flex-col items-center text-center">
+                            <p className="text-xl text-slate-500 mb-4 font-bold">你要練習哪個數字呢？</p>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full mb-4">
+                                {[2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                                    <CuteButton 
+                                        key={num} 
+                                        // Simple color cycling
+                                        color={
+                                            num === 2 ? "blue" :
+                                            num === 3 ? "pink" :
+                                            num === 4 ? "yellow" :
+                                            num === 5 ? "purple" :
+                                            num === 6 ? "green" :
+                                            num === 7 ? "orange" : 
+                                            num === 8 ? "blue" : "pink"
+                                        } 
+                                        onClick={() => startPractice(num)} 
+                                        className="text-lg !py-3"
+                                    >
+                                        {num} 的乘法
+                                    </CuteButton>
+                                ))}
+                                <div className="col-span-2 md:col-span-1">
+                                    <CuteButton color="purple" onClick={() => startPractice(null)} className="text-lg !py-3 w-full h-full">
+                                        綜合挑戰
+                                    </CuteButton>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // 進入答題階段
             return (
                 <div className="flex flex-col flex-1 max-w-lg mx-auto w-full animate-fade-in">
                 <div className="flex items-center justify-between mb-8">
-                    <CuteButton color="gray" onClick={goBack} className="!py-2 !px-4 !text-sm">
-                    <ArrowLeft size={20} /> 結束練習
+                    <CuteButton color="gray" onClick={() => setPracticeState('setup')} className="!py-2 !px-4 !text-sm">
+                        <ArrowLeft size={20} /> 重選範圍
                     </CuteButton>
-                    <div className="bg-emerald-100 text-emerald-600 px-4 py-2 rounded-full font-bold">
-                    輕鬆練習模式
+                    <div className="bg-emerald-100 text-emerald-600 px-4 py-2 rounded-full font-bold text-sm md:text-base">
+                        {targetNumber ? `${targetNumber} 的乘法練習` : '綜合練習 (2-9)'}
                     </div>
                 </div>
 
