@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>99乘法挑戰王</title>
     
-    <!-- 載入核心引擎 (改用更穩定的 cdnjs) -->
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -71,7 +70,6 @@
 </head>
 <body class="bg-rose-50 font-sans text-slate-600">
     
-    <!-- 預設載入畫面 (如果 JS 沒跑起來，使用者會看到這個) -->
     <div id="loading-screen">
         <div style="font-size: 40px; margin-bottom: 20px;">🐻</div>
         <h2 style="font-size: 24px; font-weight: bold;">正在準備魔法...</h2>
@@ -117,7 +115,8 @@
         const Lightbulb = (p) => <IconBase {...p} d={["M15 14c.2-1 .7-1.7 1.5-2.5 1-1 1.5-2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5", "M9 18h6", "M10 22h4"]} />;
         const Minus = (p) => <IconBase {...p} d="M5 12h14" />;
         const Plus = (p) => <IconBase {...p} d={["M12 5v14", "M5 12h14"]} />;
-        // 更像蘋果的圖示
+        
+        // 修正後的蘋果圖示 (更像蘋果)
         const Apple = (p) => <IconBase {...p} d={["M12 21c-3.5 0-7-4-7-9 0-3.5 2.5-6 5.5-6 1.5 0 3.5 1 3.5 1s2-1 3.5-1c3 0 5.5 2.5 5.5 6 0 5-3.5 9-7 9z", "M12 6c0-2.5 1-4 3-5"]} />;
 
         // --- 元件：3D 馬卡龍色系按鈕 ---
@@ -251,7 +250,8 @@
                 <div className="flex flex-col items-center justify-center flex-1 space-y-12 animate-fade-in py-8">
                 <div className="text-center relative pt-4 mb-4">
                     <div className="relative inline-block group cursor-default">
-                        <h1 className="text-6xl md:text-7xl font-black tracking-tight z-10 flex items-center gap-3">
+                        {/* 修正：字體大小響應式 + 不換行 (whitespace-nowrap) */}
+                        <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tight z-10 flex items-center justify-center gap-2 md:gap-3 whitespace-nowrap">
                         <span className="text-sky-400 transform -rotate-6 inline-block filter drop-shadow-sm">99</span>
                         <span className="text-rose-400 filter drop-shadow-sm">乘法挑戰王</span>
                         </h1>
@@ -322,6 +322,7 @@
 
                         <div className="flex flex-col items-center group">
                             <div className="text-5xl md:text-6xl font-black text-sky-400 bg-sky-50 w-16 h-20 md:w-20 md:h-24 rounded-2xl flex items-center justify-center border-2 border-sky-100 mb-2 transition-all group-hover:scale-110">
+
                                 {multiplier}
                             </div>
                             <div className="text-xs text-sky-600 bg-sky-100 px-2 py-1 rounded-full font-bold">乘數</div>
@@ -449,7 +450,6 @@
 
         // --- 練習模式 ---
         function PracticeMode({ goBack }) {
-
             const [question, setQuestion] = useState(generateQuestion(2, 9));
             const [options, setOptions] = useState([]);
             const [feedback, setFeedback] = useState(null); 
